@@ -41,7 +41,7 @@ public:
 	// Add code here
 	bool rayIntersect(Ray& r, float& t)
 	{
-		float denominator = n.dot(r.dir); // n · d (dot product of normal and ray direction)
+		float denominator = n.dot(r.dir); // n ?d (dot product of normal and ray direction)
 
 		// Check if ray is parallel to the plane
 		if (std::fabs(denominator) < 1e-6)  // Avoid division by zero
@@ -49,7 +49,7 @@ public:
 			return false;  // No intersection
 		}
 
-		float numerator = d - n.dot(r.o); // -(n · o - d)
+		float numerator = d - n.dot(r.o); // -(n ?o - d)
 		t = numerator / denominator;  // Solve for t
 
 		return (t >= 0);  // Intersection is valid only if t is non-negative
@@ -75,8 +75,10 @@ public:
 		vertices[0] = v0;
 		vertices[1] = v1;
 		vertices[2] = v2;
-		e1 = vertices[2].p - vertices[1].p;
+		e1 = vertices[2].p - vertices[1].p; // original
 		e2 = vertices[0].p - vertices[2].p;
+		//e1 = vertices[1].p - vertices[0].p;
+		//e2 = vertices[2].p - vertices[0].p;
 		n = e1.cross(e2).normalize();
 		area = e1.cross(e2).length() * 0.5f;
 		d = Dot(n, vertices[0].p);
@@ -85,15 +87,12 @@ public:
 	{
 		return (vertices[0].p + vertices[1].p + vertices[2].p) / 3.0f;
 	}
-	// Add code here
+	
+	/*
+	// Ray-Plane + Barycentric Test
 	bool rayIntersect(const Ray& r, float& t, float& u, float& v) const
 	{
-		/*Vec3 h = r.dir.cross(e2);
-		float det = e1.dot(h);
-		if (std::fabs(det) < EPSILON)
-			return false;
-
-		Vec3 s = r.o - vertices[0].p;*/
+		
 
 		// checks if the ray intersects the plane
 		float denom = Dot(n, r.dir);
@@ -110,6 +109,43 @@ public:
 
 		return true;
 	}
+	*/
+	
+	// Moller-Trumbore intersection algorithm
+	bool rayIntersect(const Ray& r, float& t, float& u, float& v) const {
+		// Recover conventional edges using the stored ones.
+		Vec3 v0 = vertices[0].p;
+		Vec3 E1 = -e2 - e1;  // = v1 - v0
+		Vec3 E2 = -e2;       // = v2 - v0
+		// Compute determinant
+		Vec3 h = r.dir.cross(E2);
+		float det = E1.dot(h);
+		// If determinant is near zero, the ray lies in the plane of the triangle
+		if (std::fabs(det) < EPSILON)
+			return false;
+
+		Vec3 s = r.o - vertices[0].p;
+
+		// Compute u parameter and test bounds
+		float invDet = 1.0f / det;
+		u = s.dot(h) * invDet;
+		if (u < 0.0f || u > 1.0f)
+			return false;
+
+		// Compute v parameter and test bounds
+		Vec3 q = s.cross(E1);
+		v = r.dir.dot(q) * invDet;
+		if (v < 0.0f || (u + v) > 1.0f)
+			return false;
+
+		// Compute t to find intersection point
+		t = E2.dot(q) * invDet;
+
+		return t > EPSILON; // The intersection is valid only if t is positive
+
+	}
+	
+
 	void interpolateAttributes(const float alpha, const float beta, const float gamma, Vec3& interpolatedNormal, float& interpolatedU, float& interpolatedV) const
 	{
 		interpolatedNormal = vertices[0].normal * alpha + vertices[1].normal * beta + vertices[2].normal * gamma;
@@ -150,13 +186,44 @@ public:
 	// Add code here
 	bool rayAABB(const Ray& r, float& t)
 	{
+		// Compute intersection distances for the x-axis.
+		float tx1 = (min.x - r.o.x) * r.invDir.x;
+		float tx2 = (max.x - r.o.x) * r.invDir.x;
+		float tmin_x = std::min(tx1, tx2);
+		float tmax_x = std::max(tx1, tx2);
+
+		// Compute intersection distances for the y-axis.
+		float ty1 = (min.y - r.o.y) * r.invDir.y;
+		float ty2 = (max.y - r.o.y) * r.invDir.y;
+		float tmin_y = std::min(ty1, ty2);
+		float tmax_y = std::max(ty1, ty2);
+
+		// Compute intersection distances for the z-axis.
+		float tz1 = (min.z - r.o.z) * r.invDir.z;
+		float tz2 = (max.z - r.o.z) * r.invDir.z;
+		float tmin_z = std::min(tz1, tz2);
+		float tmax_z = std::max(tz1, tz2);
+
+		// The entry point is the largest tmin, and the exit is the smallest tmax.
+		float tmin_final = std::max(tmin_x, std::max(tmin_y, tmin_z));
+		float tmax_final = std::min(tmax_x, std::min(tmax_y, tmax_z));
+
+		// If the exit is behind the ray or there is no overlap, there's no intersection.
+		if (tmax_final < 0 || tmin_final > tmax_final)
+			return false;
+
+		// Return the entry intersection distance.
+		t = tmin_final;
 		return true;
 	}
+	// Simple intersection test that ignores the entry distance.
 	// Add code here
 	bool rayAABB(const Ray& r)
 	{
-		return true;
+		float t;
+		return rayAABB(r, t);
 	}
+	// Computes the surface area of the bounding box.
 	// Add code here
 	float area()
 	{
