@@ -167,6 +167,10 @@ public:
 	void tonemap(int x, int y, unsigned char& r, unsigned char& g, unsigned char& b, float exposure = 1.0f)
 	{
 		// Return a tonemapped pixel at coordinates x, y
+		Colour pixel = film[y * width + x] * exposure / (float)SPP;
+		r = std::min(powf(std::max(pixel.r, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
+		g = std::min(powf(std::max(pixel.g, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
+		b = std::min(powf(std::max(pixel.b, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
 	}
 	// Do not change any code below this line
 	void init(int _width, int _height, ImageFilter* _filter)
