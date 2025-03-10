@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core.h"
 #define STB_IMAGE_IMPLEMENTATION
@@ -140,7 +140,7 @@ class BoxFilter : public ImageFilter
 public:
 	float filter(float x, float y) const
 	{
-		if (fabsf(x) < 0.5f && fabs(y) < 0.5f)
+		if (fabsf(x) <= 0.5f && fabs(y) <= 0.5f)
 		{
 			return 1.0f;
 		}
@@ -150,6 +150,83 @@ public:
 	{
 		return 0;
 	}
+};
+
+class GaussianFilter : public ImageFilter {
+public:
+	float d;
+	float radius;
+	float alpha;
+	float boundaryExp;
+	// Constructor
+	//   alpha controls how quickly the Gaussian falls off.
+	//   radius is the maximum distance (in pixels, typically) beyond which the filter is zero.
+	GaussianFilter(float alpha, float radius)
+		: alpha(alpha), radius(radius)
+	{
+		// Precompute the exponential at the boundary once
+		boundaryExp = std::exp(-alpha * radius * radius);
+
+		// (Optional) Precompute a normalization factor if you want the filter to peak at 1.0
+		// norm = 1.0f / (1.0f - boundaryExp);
+	}
+
+	float filter(float x, float y) const {
+		float d2 = x * x + y * y;
+		// If distance is beyond the filter's radius, return zero (finite support).
+		if (d2 > radius * radius)
+			return 0.0f;
+		// Difference of exponentials: e^(-alpha*d^2) - e^(-alpha*radius^2).
+		// At d = radius, this equals 0. At d = 0, it equals 1 - boundaryExp.
+		float val = std::exp(-alpha * d2) - boundaryExp;
+		return val;
+	}
+
+	int size() const
+	{
+		return 0;
+	}
+};
+
+class MitchellFilter : public ImageFilter
+{
+public:
+	float B = 1 / 3;
+	float C = 1 / 3;
+
+	// The 1D Mitchell-Netravali kernel.
+	inline float mitchell1D(float x) const
+	{
+		// Work with the absolute value.
+		x = fabsf(x);
+
+		if (x < 1.0f)
+		{
+			// For |x| < 1.
+			return (1.0f / 6.0f) * ((12 - 9 * B - 6 * C) * x * x * x +
+				(-18 + 12 * B + 6 * C) * x * x +
+				(6 - 2 * B));
+		}
+		else if (x < 2.0f)
+		{
+			// For 1 ≤ |x| < 2.
+			return (1.0f / 6.0f) * ((-B - 6 * C) * x * x * x +
+				(6 * B + 30 * C) * x * x +
+				(-12 * B - 48 * C) * x +
+				(8 * B + 24 * C));
+		}
+		else
+		{
+			// Outside the support.
+			return 0.0f;
+		}
+	}
+
+	float filter(const float x, const float y) const override
+	{
+		return mitchell1D(x) * mitchell1D(y);
+	}
+
 };
 
 class Film
@@ -163,6 +240,26 @@ public:
 	void splat(const float x, const float y, const Colour& L)
 	{
 		// Code to splat a smaple with colour L into the image plane using an ImageFilter
+		float filterWeights[25]; // Storage to cache weights 
+		unsigned int indices[25]; // Store indices to minimize computations 
+		unsigned int used = 0;
+		float total = 0;
+		int size = filter->size();
+		for (int i = -size; i <= size; i++) {
+			for (int j = -size; j <= size; j++) {
+				int px = (int)x + j;
+				int py = (int)y + i;
+				if (px >= 0 && px < width && py >= 0 && py < height) {
+					indices[used] = (py * width) + px;
+					filterWeights[used] = filter->filter(j, i);
+					total += filterWeights[used];
+					used++;
+				}
+			}
+		}
+		for (int i = 0; i < used; i++) {
+			film[indices[i]] = film[indices[i]] + (L * filterWeights[i] / total);
+		}
 	}
 	void tonemap(int x, int y, unsigned char& r, unsigned char& g, unsigned char& b, float exposure = 1.0f)
 	{

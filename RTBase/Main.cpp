@@ -10,12 +10,35 @@
 void runTests()
 {
 	// Add test code here
+	// Create an AABB with min and max points.
+	AABB box;
+	box.min = Vec3(-1.0f, -1.0f, -1.0f);
+	box.max = Vec3(1.0f, 1.0f, 1.0f);
+
+	// Test ray that should hit the box.
+	// Starting at (0,0,-5) and pointing in the positive z direction.
+	Ray ray1(Vec3(0.0f, 0.0f, -5.0f), Vec3(0.0f, 0.0f, 1.0f));
+	float t;
+	bool hit1 = box.rayAABB(ray1, t);
+	std::cout << "Ray 1 hits the box: " << (hit1 ? "Yes" : "No") << std::endl;
+	if (hit1) {
+		std::cout << "Entry distance t: " << t << std::endl;
+	}
+
+	// Test ray that should miss the box.
+	// Starting at (5,5,-5) and pointing in the positive z direction.
+	Ray ray2(Vec3(5.0f, 5.0f, -5.0f), Vec3(0.0f, 0.0f, 1.0f));
+	bool hit2 = box.rayAABB(ray2);
+	std::cout << "Ray 2 hits the box: " << (hit2 ? "Yes" : "No") << std::endl;
+
+	// Output the computed area of the box.
+	std::cout << "Surface area of the AABB: " << box.area() << std::endl;
 }
 
 int main(int argc, char *argv[])
 {
 	// Add call to tests if required
-	// runTests()
+	runTests();
 	
 	// Initialize default parameters
 	std::string sceneName = "cornell-box";
