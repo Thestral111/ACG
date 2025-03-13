@@ -53,18 +53,31 @@ public:
 	static Vec3 cosineSampleHemisphere(float r1, float r2)
 	{
 		// Add code here
-		return Vec3(0, 0, 1);
+		// Interpret r1 as the radial distance squared on a unit disk.
+		float r = sqrtf(r1);
+		float theta = 2.0f * M_PI * r2;
+
+		// Convert polar coordinates to Cartesian for the disk (x,y).
+		float x = r * cosf(theta);
+		float y = r * sinf(theta);
+
+		// The z-coordinate is derived from z = sqrt(1 - r^2).
+		float z = sqrtf(std::max(0.0f, 1.0f - r1));
+
+		return Vec3(x, y, z);
+		//return Vec3(0, 0, 1);
 	}
 	static float cosineHemispherePDF(const Vec3 wi)
 	{
 		// Add code here
-		return 1.0f;
+		// The PDF is (z / π) for z ≥ 0, otherwise 0.
+		return (wi.z > 0.0f) ? wi.z / M_PI : 0.0f;
+		//return 1.0f;
 	}
 	static Vec3 uniformSampleSphere(float r1, float r2)
 	{
 		// Add code here
 		// Map r1 to z in [-1,1].
-		//   z = 1 - 2*r1  =>  z in [1, -1] as r1 goes from 0 to 1.
 		float z = 1.0f - 2.0f * r1;
 		float phi = 2.0f * M_PI * r2; // azimuth in [0, 2π)
 
