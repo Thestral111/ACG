@@ -55,6 +55,14 @@ public:
 	Colour direct(Ray& r, Sampler* sampler)
 	{
 		// Compute direct lighting for an image sampler here
+		IntersectionData intersection = scene->traverse(r);
+		ShadingData shadingData = scene->calculateShadingData(intersection, r);
+		if (intersection.t < FLT_MAX) {
+			if (shadingData.bsdf->isLight()) {
+				return shadingData.bsdf->emit(shadingData, shadingData.wo);
+			}
+			return computeDirect(shadingData, sampler);
+		}
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 	Colour albedo(Ray& r)
