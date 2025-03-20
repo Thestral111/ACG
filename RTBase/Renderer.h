@@ -179,8 +179,10 @@ public:
 				float px = x + 0.5f;
 				float py = y + 0.5f;
 				Ray ray = scene->camera.generateRay(px, py);
-				Colour col = viewNormals(ray);
+				//Colour col = viewNormals(ray);
 				//Colour col = albedo(ray);
+				Colour initialThroughput(1.0f, 1.0f, 1.0f);
+				Colour col = pathTrace(ray, initialThroughput, 0, samplers);
 				film->splat(px, py, col);
 				unsigned char r = (unsigned char)(col.r * 255);
 				unsigned char g = (unsigned char)(col.g * 255);
