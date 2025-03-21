@@ -57,7 +57,7 @@ public:
 	}
 };
 
-#define EPSILON 0.001f
+#define EPSILON 0.00001f // 0.001f
 
 class Triangle
 {
@@ -294,8 +294,8 @@ public:
 	BVHNode* l;
 	// This can store an offset and number of triangles in a global triangle list for example
 	// But you can store this however you want!
-	unsigned int offset;
-	unsigned char num;
+	unsigned int offset = 0;
+	unsigned char num = 0;
 	BVHNode()
 	{
 		r = NULL;
@@ -305,6 +305,7 @@ public:
 	void build(std::vector<Triangle>& inputTriangles)
 	{
 		// Add BVH building code here
+		buildRecursive(inputTriangles, 0, inputTriangles.size());
 	}
 
 	// Recursive BVH construction using binned SAH.
@@ -515,7 +516,7 @@ public:
 		// Add visibility code here
 		float tHit;
 		if (!bounds.rayAABB(ray, tHit))
-			return false;
+			return true;
 
 		if (l == nullptr && r == nullptr)
 		{
@@ -523,16 +524,16 @@ public:
 			{
 				float t, u, v;
 				if (triangles[i].rayIntersect(ray, t, u, v) && t < maxT)
-					return true;
+					return false;
 			}
-			return false;
+			return true;
 		}
 
 		if (l && l->traverseVisible(ray, triangles, maxT))
-			return true;
+			return false;
 		if (r && r->traverseVisible(ray, triangles, maxT))
-			return true;
-		return false;
+			return false;
+		return true;
 		//return true;
 	}
 };

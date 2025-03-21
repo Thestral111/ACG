@@ -183,6 +183,7 @@ public:
 				//Colour col = albedo(ray);
 				Colour initialThroughput(1.0f, 1.0f, 1.0f);
 				Colour col = pathTrace(ray, initialThroughput, 0, samplers);
+				//Colour col = direct(ray, samplers);
 				film->splat(px, py, col);
 				unsigned char r = (unsigned char)(col.r * 255);
 				unsigned char g = (unsigned char)(col.g * 255);

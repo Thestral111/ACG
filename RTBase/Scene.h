@@ -54,7 +54,13 @@ public:
 	void build()
 	{
 		// Add BVH building code here
-		
+		// Build BVH from triangles.
+		if (!triangles.empty())
+		{
+			bvh = new BVHNode();
+			bvh->build(triangles);
+		}
+
 		// Do not touch the code below this line!
 		// Build light list
 		for (int i = 0; i < triangles.size(); i++)
@@ -72,23 +78,33 @@ public:
 	{
 		IntersectionData intersection;
 		intersection.t = FLT_MAX;
-		for (int i = 0; i < triangles.size(); i++)
+		// bvh
+		//bvh = nullptr;
+		if (bvh != nullptr)
 		{
-			float t;
-			float u;
-			float v;
-			if (triangles[i].rayIntersect(ray, t, u, v))
+			intersection = bvh->traverse(ray, triangles);
+		}
+		else
+		{
+			for (int i = 0; i < triangles.size(); i++)
 			{
-				if (t < intersection.t)
+				float t;
+				float u;
+				float v;
+				if (triangles[i].rayIntersect(ray, t, u, v))
 				{
-					intersection.t = t;
-					intersection.ID = i;
-					intersection.alpha = u;
-					intersection.beta = v;
-					intersection.gamma = 1.0f - (u + v);
+					if (t < intersection.t)
+					{
+						intersection.t = t;
+						intersection.ID = i;
+						intersection.alpha = u;
+						intersection.beta = v;
+						intersection.gamma = 1.0f - (u + v);
+					}
 				}
 			}
 		}
+		
 		return intersection;
 	}
 	Light* sampleLight(Sampler* sampler, float& pmf)
@@ -124,8 +140,8 @@ public:
 		float maxT = dir.length() - (2.0f * EPSILON);
 		dir = dir.normalize();
 		ray.init(p1 + (dir * EPSILON), dir);
-		//return bvh->traverseVisible(ray, triangles, maxT);
-		for (int i = 0; i < triangles.size(); i++)
+		return bvh->traverseVisible(ray, triangles, maxT);
+		/*for (int i = 0; i < triangles.size(); i++)
 		{
 			float t;
 			float u;
@@ -138,7 +154,7 @@ public:
 				}
 			}
 		}
-		return true;
+		return true;*/
 	}
 	Colour emit(Triangle* light, ShadingData shadingData, Vec3 wi)
 	{
