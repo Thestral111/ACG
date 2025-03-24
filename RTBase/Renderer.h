@@ -169,38 +169,127 @@ public:
 		}
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
+
+	static const int TILE_SIZE = 32;
 	void render()
 	{
 		film->incrementSPP();
-		for (unsigned int y = 0; y < film->height; y++)
-		{
-			for (unsigned int x = 0; x < film->width; x++)
+		int numTilesX = (film->width + TILE_SIZE - 1) / TILE_SIZE;
+		int numTilesY = (film->height + TILE_SIZE - 1) / TILE_SIZE;
+		int totalTiles = numTilesX * numTilesY;
+		std::atomic<int> nextTile(0);
+		std::vector<std::thread> workers;
+		int numThreads = numProcs;
+		workers.reserve(numThreads);
+		/*
+		auto renderTile = [&](int tileX, int tileY, int threadID) {
+			int startX = tileX * TILE_SIZE;
+			int startY = tileY * TILE_SIZE;
+			int endX = min(startX + TILE_SIZE, film->width);
+			int endY = min(startY + TILE_SIZE, film->height);
+			printf("Thread %d rendering tile (%d, %d) to (%d, %d)\n", threadID, startX, startY, endX, endY);
+
+			for (int y = startY; y < endY; y++)
 			{
-				float px = x + 0.5f;
-				float py = y + 0.5f;
-				Ray ray = scene->camera.generateRay(px, py);
-				//Colour col = viewNormals(ray);
-				//Colour col = albedo(ray);
-				Colour initialThroughput(1.0f, 1.0f, 1.0f);
-				Colour col = pathTrace(ray, initialThroughput, 0, samplers);
-				//Colour col = direct(ray, samplers);
-				film->splat(px, py, col);
-				unsigned char r = (unsigned char)(col.r * 255);
-				unsigned char g = (unsigned char)(col.g * 255);
-				unsigned char b = (unsigned char)(col.b * 255);
-				film->tonemap(x, y, r, g, b);
-				canvas->draw(x, y, r, g, b);
+				for (int x = startX; x < endX; x++)
+				{
+					float px = x + 0.5f;
+					float py = y + 0.5f;
+					Ray ray = scene->camera.generateRay(px, py);
+					Colour col = viewNormals(ray);
+					//Colour col = albedo(ray);
+					//Colour initialThroughput(1.0f, 1.0f, 1.0f);
+					//Colour col = pathTrace(ray, initialThroughput, 0, &samplers[threadID]);
+					film->splat(px, py, col);
+					unsigned char r = (unsigned char)(col.r * 255);
+					unsigned char g = (unsigned char)(col.g * 255);
+					unsigned char b = (unsigned char)(col.b * 255);
+					film->tonemap(x, y, r, g, b);
+					canvas->draw(x, y, r, g, b);
+				}
 			}
+		};
+		//auto workerFunc = [&](int threadId) {
+			for (int tileY = 0; tileY < numTilesY; tileY++)
+			{
+				for (int tileX = 0; tileX < numTilesX; tileX++)
+				{
+					workers.emplace_back(renderTile, tileX, tileY, workers.size() % numThreads);
+					//renderTile(tileX, tileY, threadId);
+				}
+			}
+		//};
+
+			for (int i = 0; i < numThreads; i++)
+		{
+			workers.emplace_back(workerFunc, i);
 		}
+		*/
+		// Worker function: each thread processes one tile at a time
+		auto workerFunc = [=, &nextTile](int id) {
+			//int threadID = std::this_thread::get_id().hash();
+			int threadID = static_cast<int>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+			//int threadID = std::this_thread::get_id();
+			while (true)
+			{
+				int tileIndex = nextTile.fetch_add(1, std::memory_order_relaxed);
+				if (tileIndex >= totalTiles)
+					break;
+				int tileX = tileIndex % numTilesX;
+				int tileY = tileIndex / numTilesX;
+				int startX = tileX * TILE_SIZE;
+				int startY = tileY * TILE_SIZE;
+				int endX = min(startX + TILE_SIZE, film->width);
+				int endY = min(startY + TILE_SIZE, film->height);
+
+				printf("Thread %d rendering tile (%d, %d) to (%d, %d)\n", id, startX, startY, endX, endY);
+				for (int y = startY; y < endY; y++)
+				{
+					for (int x = startX; x < endX; x++)
+					{
+						float px = x + 0.5f;
+						float py = y + 0.5f;
+						Ray ray = scene->camera.generateRay(px, py);
+						//Colour col = viewNormals(ray);
+						//Colour col = albedo(ray);
+						Colour initialThroughput(1.0f, 1.0f, 1.0f);
+						Colour col = pathTrace(ray, initialThroughput, 0, samplers);
+						film->splat(px, py, col);
+						film->splat(px, py, col);
+						unsigned char r = static_cast<unsigned char>(col.r * 255);
+						unsigned char g = static_cast<unsigned char>(col.g * 255);
+						unsigned char b = static_cast<unsigned char>(col.b * 255);
+						film->tonemap(x, y, r, g, b);
+						canvas->draw(x, y, r, g, b);
+					}
+				}
+			}
+			};
+
+		// Launch a fixed number of threads.
+		for (int i = 0; i < numThreads; i++)
+		{
+
+			workers.emplace_back(workerFunc, i);
+		}
+
+		// Wait for all threads to complete
+		for (auto& worker : workers) {
+			worker.join();
+		}
+
 	}
+
 	int getSPP()
 	{
 		return film->SPP;
 	}
+
 	void saveHDR(std::string filename)
 	{
 		film->save(filename);
 	}
+
 	void savePNG(std::string filename)
 	{
 		stbi_write_png(filename.c_str(), canvas->getWidth(), canvas->getHeight(), 3, canvas->getBackBuffer(), canvas->getWidth() * 3);
