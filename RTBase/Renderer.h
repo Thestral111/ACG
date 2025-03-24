@@ -122,6 +122,10 @@ public:
 			Colour bsdf;
 			float pdf;
 			Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
+			/*Colour bsdf;
+			Colour indirect;
+			float pdf;
+			Vec3 wi = shadingData.bsdf->sample(shadingData, sampler, indirect, pdf);*/
 			pdf = SamplingDistributions::cosineHemispherePDF(wi);
 			wi = shadingData.frame.toWorld(wi);
 			bsdf = shadingData.bsdf->evaluate(shadingData, wi);
@@ -242,7 +246,7 @@ public:
 				int endX = min(startX + TILE_SIZE, film->width);
 				int endY = min(startY + TILE_SIZE, film->height);
 
-				printf("Thread %d rendering tile (%d, %d) to (%d, %d)\n", id, startX, startY, endX, endY);
+				//printf("Thread %d rendering tile (%d, %d) to (%d, %d)\n", id, startX, startY, endX, endY);
 				for (int y = startY; y < endY; y++)
 				{
 					for (int x = startX; x < endX; x++)

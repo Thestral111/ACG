@@ -140,6 +140,13 @@ public:
 		float maxT = dir.length() - (2.0f * EPSILON);
 		dir = dir.normalize();
 		ray.init(p1 + (dir * EPSILON), dir);
+		/*if (bvh->traverseVisible(ray, triangles, maxT) == true) {
+			printf("true\n");
+		}
+		else {
+			printf("false\n");
+		}*/
+		//printf("Visible\n");
 		return bvh->traverseVisible(ray, triangles, maxT);
 		/*for (int i = 0; i < triangles.size(); i++)
 		{
