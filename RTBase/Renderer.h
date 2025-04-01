@@ -176,17 +176,42 @@ public:
 
 	// Helper: Try to connect a point p on a light path to the camera.
 	// This function returns the contribution if p projects onto the camera; otherwise, it returns black.
+	//Colour connectToCamera(const Vec3& p, const Vec3& n, const Colour& pathThroughput) {
+	//	float pixelX, pixelY;
+	//	if (scene->camera.projectOntoCamera(p, pixelX, pixelY)) {
+	//		// Compute the direction from the point to the camera.
+	//		Vec3 toCamera = (scene->camera.origin - p);
+	//		float distanceSquared = toCamera.lengthSq();
+	//		toCamera = toCamera.normalize();
+	//		// Compute the cosine between this direction and the camera's normal.
+	//		float cosThetaCam = max(Dot(toCamera, scene->camera.viewDirection), 0.0f);
+	//		// Geometry term: this is a simplified form.
+	//		float G = cosThetaCam / (distanceSquared + 1e-6f);
+	//		return pathThroughput * G;
+	//	}
+	//	return Colour(0.0f, 0.0f, 0.0f);
+	//}
 	Colour connectToCamera(const Vec3& p, const Vec3& n, const Colour& pathThroughput) {
 		float pixelX, pixelY;
+		// If p projects onto the image:
 		if (scene->camera.projectOntoCamera(p, pixelX, pixelY)) {
-			// Compute the direction from the point to the camera.
-			Vec3 toCamera = (scene->camera.origin - p);
-			float distanceSquared = toCamera.lengthSq();
-			toCamera = toCamera.normalize();
-			// Compute the cosine between this direction and the camera's normal.
-			float cosThetaCam = max(Dot(toCamera, scene->camera.viewDirection), 0.0f);
-			// Geometry term: this is a simplified form.
-			float G = cosThetaCam / (distanceSquared + 1e-6f);
+			// Compute the vector from the light vertex to the camera origin.
+			Vec3 toCam = scene->camera.origin - p;
+			float d2 = toCam.lengthSq();
+			toCam = toCam.normalize();
+			// Compute the camera's forward direction.
+			//Vec3 camDir = (scene->camera.to - scene->camera.origin).normalize();
+			// Cosine at the camera: how well the connection aligns with the camera’s view.
+			float cosThetaCam = max(Dot(toCam, scene->camera.viewDirection), 0.0f);
+			// Cosine at the light vertex: the angle between the connection (reversed) and the light's surface normal.
+			float cosThetaLight = max(Dot(-toCam, n), 0.0f);
+			// Compute the geometry term.
+			float G = (cosThetaCam * cosThetaLight) / (d2 + 1e-6f);
+			// Optionally, perform a visibility test between p and camera origin:
+			if (!scene->visible(p, scene->camera.origin)) {
+				return Colour(0.0f, 0.0f, 0.0f);
+			}
+			// Return the attenuated contribution.
 			return pathThroughput * G;
 		}
 		return Colour(0.0f, 0.0f, 0.0f);
@@ -250,6 +275,10 @@ public:
 		Vec3 lightDir = light->sampleDirectionFromLight(sampler, pdfDir);
 		// Evaluate the light emission for the given direction.
 		Colour Le = light->evaluate(lightDir);
+		/*if (Le.Lum() <= 1e-6f) {
+			std::cout << "Light Dir: " << lightDir.x << ", Luminance: " << Le.Lum() << std::endl;
+		}*/
+		//std::cout << "Luminance: " << Le.Lum() << std::endl;
 		// Create an initial ray from the light.
 		Ray r(lightPos, lightDir);
 		// Compute the initial throughput. The probability of this light sample is pmf * pdfPos * pdfDir.
@@ -344,7 +373,7 @@ public:
 						Colour initialThroughput(1.0f, 1.0f, 1.0f);
 						Colour col = pathTrace(ray, initialThroughput, 0, samplers);
 						//Colour col = lightTrace(samplers);
-						film->splat(px, py, col);
+						//film->splat(px, py, col);
 						film->splat(px, py, col);
 						unsigned char r = static_cast<unsigned char>(col.r * 255);
 						unsigned char g = static_cast<unsigned char>(col.g * 255);
