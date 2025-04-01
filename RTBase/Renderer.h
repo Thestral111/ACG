@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core.h"
 #include "Sampling.h"
@@ -174,6 +174,91 @@ public:
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 
+	// Helper: Try to connect a point p on a light path to the camera.
+	// This function returns the contribution if p projects onto the camera; otherwise, it returns black.
+	Colour connectToCamera(const Vec3& p, const Vec3& n, const Colour& pathThroughput) {
+		float pixelX, pixelY;
+		if (scene->camera.projectOntoCamera(p, pixelX, pixelY)) {
+			// Compute the direction from the point to the camera.
+			Vec3 toCamera = (scene->camera.origin - p);
+			float distanceSquared = toCamera.lengthSq();
+			toCamera = toCamera.normalize();
+			// Compute the cosine between this direction and the camera's normal.
+			float cosThetaCam = max(Dot(toCamera, scene->camera.viewDirection), 0.0f);
+			// Geometry term: this is a simplified form.
+			float G = cosThetaCam / (distanceSquared + 1e-6f);
+			return pathThroughput * G;
+		}
+		return Colour(0.0f, 0.0f, 0.0f);
+	}
+
+	// Recursive light tracing function.
+	// It starts at a light source and then at each vertex connects to the camera and continues the light path.
+	Colour lightTracePath(Ray& r, Colour pathThroughput, int depth, Sampler* sampler) {
+		// Terminate if max depth reached.
+		if (depth > MAX_DEPTH) {
+			return Colour(0.0f, 0.0f, 0.0f);
+		}
+		IntersectionData intersection = scene->traverse(r);
+		ShadingData shadingData = scene->calculateShadingData(intersection, r);
+		Colour accumulated(0.0f, 0.0f, 0.0f);
+
+		if (shadingData.t < FLT_MAX) {
+			// p is the current light-path vertex.
+			Vec3 p = shadingData.x;
+			// Connect this vertex to the camera.
+			Colour connection = connectToCamera(p, shadingData.sNormal, pathThroughput);
+			accumulated = accumulated + connection;
+
+			// Sample the BSDF at this vertex to continue the light path.
+			Colour bsdfVal;
+			float pdf;
+			Vec3 wi = shadingData.bsdf->sample(shadingData, sampler, bsdfVal, pdf);
+			if (pdf <= 0.0f) {
+				return accumulated;
+			}
+			// Update the throughput. Include the cosine term (dot between the new direction and the surface normal).
+			float cosTerm = fabsf(Dot(wi, shadingData.sNormal));
+			Colour newThroughput = pathThroughput * bsdfVal * cosTerm / pdf;
+			// Russian Roulette termination:
+			float rrProb = min(newThroughput.Lum(), 0.9f);
+			if (sampler->next() >= rrProb) {
+				return accumulated;
+			}
+			newThroughput = newThroughput / rrProb;
+			// Create the new ray from a point offset by EPSILON to avoid self-intersection.
+			r.init(shadingData.x + wi * EPSILON, wi);
+			// Continue tracing the light path.
+			accumulated = accumulated + lightTracePath(r, newThroughput, depth + 1, sampler);
+			return accumulated;
+		}
+		else {
+			// If the ray does not hit anything, optionally add the background contribution.
+			return pathThroughput * scene->background->evaluate(r.dir);
+		}
+	}
+
+	// Wrapper function to initiate light tracing.
+	Colour lightTrace(Sampler* sampler) {
+		// Sample a light source.
+		float pmf;
+		Light* light = scene->sampleLight(sampler, pmf);
+
+		// Sample both a position and a direction from the light.
+		float pdfPos, pdfDir;
+		Vec3 lightPos = light->samplePositionFromLight(sampler, pdfPos);
+		Vec3 lightDir = light->sampleDirectionFromLight(sampler, pdfDir);
+		// Evaluate the light emission for the given direction.
+		Colour Le = light->evaluate(lightDir);
+		// Create an initial ray from the light.
+		Ray r(lightPos, lightDir);
+		// Compute the initial throughput. The probability of this light sample is pmf * pdfPos * pdfDir.
+		Colour throughput = Le / (pmf * pdfPos * pdfDir + 1e-6f);
+		//std::cout << throughput.r << " " << throughput.g << " " << throughput.b << std::endl;
+		// Trace the light path.
+		return lightTracePath(r, throughput, 0, sampler);
+	}
+
 	static const int TILE_SIZE = 32;
 	void render()
 	{
@@ -258,6 +343,7 @@ public:
 						//Colour col = albedo(ray);
 						Colour initialThroughput(1.0f, 1.0f, 1.0f);
 						Colour col = pathTrace(ray, initialThroughput, 0, samplers);
+						//Colour col = lightTrace(samplers);
 						film->splat(px, py, col);
 						film->splat(px, py, col);
 						unsigned char r = static_cast<unsigned char>(col.r * 255);

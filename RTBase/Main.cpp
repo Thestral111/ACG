@@ -44,7 +44,10 @@ int main(int argc, char *argv[])
 	//std::string sceneName = "cornell-box";
 	//std::string sceneName = "living-room";
 	//std::string sceneName = "kitchen";
-	std::string sceneName = "MaterialsScene";
+	std::string sceneName = "bathroom";
+	//std::string sceneName = "car2";
+	//std::string sceneName = "Terrain";
+	//std::string sceneName = "MaterialsScene";
 	std::string filename = "GI.hdr";
 	unsigned int SPP = 8192; //8192
 
