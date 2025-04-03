@@ -2,6 +2,8 @@
 
 #include "Core.h"
 #include "Sampling.h"
+#include <iostream>
+using namespace std;
 
 class Ray
 {
@@ -141,7 +143,8 @@ public:
 		// Compute t to find intersection point
 		t = E2.dot(q) * invDet;
 
-		return t > EPSILON; // The intersection is valid only if t is positive
+		//cout << "t = " << t << endl;
+		return t > 0.00000001f; // The intersection is valid only if t is positive
 
 	}
 	
@@ -585,11 +588,13 @@ public:
 		// If leaf, test each triangle.
 		if (l == nullptr && r == nullptr) // if (l == nullptr && r == nullptr)
 		{
+			//cout << "intersect" << endl;
 			for (int i = startIndex; i < endIndex; i++) // for (unsigned int i = offset; i < offset + num; i++)
 			{
 				float t, u, v;
 				if (triangles[i].rayIntersect(ray, t, u, v))
 				{
+					//cout << "intersect" << endl;
 					if (t < intersection.t)
 					{
 						intersection.t = t;

@@ -53,6 +53,7 @@ public:
 		float pdf;
 		Colour emitted;
 		Vec3 p = light->sample(shadingData, sampler, emitted, pdf);
+		//std::cout << "Luminance: " << emitted.Lum() << std::endl;
 		if (light->isArea())
 		{
 			// Calculate GTerm
@@ -92,6 +93,7 @@ public:
 		// Add pathtracer code here
 		IntersectionData intersection = scene->traverse(r);
 		ShadingData shadingData = scene->calculateShadingData(intersection, r);
+		//std::cout << shadingData.t << std::endl;
 		if (shadingData.t < FLT_MAX)
 		{
 			if (shadingData.bsdf->isLight())
@@ -193,24 +195,40 @@ public:
 	//}
 	Colour connectToCamera(const Vec3& p, const Vec3& n, const Colour& pathThroughput) {
 		float pixelX, pixelY;
+		//std::cout << "p = " << p.x << " and " << p.y << std::endl;
 		// If p projects onto the image:
 		if (scene->camera.projectOntoCamera(p, pixelX, pixelY)) {
+			//std::cout << "project" << std::endl;
+			//std::cout << "p = " << p.x << " and " << p.y << std::endl;
 			// Compute the vector from the light vertex to the camera origin.
 			Vec3 toCam = scene->camera.origin - p;
 			float d2 = toCam.lengthSq();
 			toCam = toCam.normalize();
+			//std::cout << "to Cam x = " << toCam.x << " y = " << toCam.y << std::endl;
 			// Compute the camera's forward direction.
 			//Vec3 camDir = (scene->camera.to - scene->camera.origin).normalize();
 			// Cosine at the camera: how well the connection aligns with the camera’s view.
-			float cosThetaCam = max(Dot(toCam, scene->camera.viewDirection), 0.0f);
+			float cosThetaCam = max(Dot(-toCam, scene->camera.viewDirection), 0.0f);
+			/*if (cosThetaCam != 0.0f) {
+				std::cout << "cosc = " << cosThetaCam << std::endl;
+			}*/
 			// Cosine at the light vertex: the angle between the connection (reversed) and the light's surface normal.
-			float cosThetaLight = max(Dot(-toCam, n), 0.0f);
+			float cosThetaLight = max(Dot(toCam, n), 0.0f);
+			//std::cout << "n = " << n.x << " and " << n.y << std::endl;
+			/*if (cosThetaLight != 0.0f) {
+				std::cout << "cosl = " << cosThetaLight << std::endl;
+			}*/
 			// Compute the geometry term.
 			float G = (cosThetaCam * cosThetaLight) / (d2 + 1e-6f);
+			/*if (G != 0.0f) {
+				std::cout << "g = " << G << std::endl;
+			}*/
 			// Optionally, perform a visibility test between p and camera origin:
 			if (!scene->visible(p, scene->camera.origin)) {
+				//cout << "Not visible" << endl;
 				return Colour(0.0f, 0.0f, 0.0f);
 			}
+			//cout << "visible" << endl;
 			// Return the attenuated contribution.
 			return pathThroughput * G;
 		}
@@ -227,8 +245,9 @@ public:
 		IntersectionData intersection = scene->traverse(r);
 		ShadingData shadingData = scene->calculateShadingData(intersection, r);
 		Colour accumulated(0.0f, 0.0f, 0.0f);
-
+		//std::cout << shadingData.t << std::endl;
 		if (shadingData.t < FLT_MAX) {
+			//std::cout << "t entered" << std::endl;
 			// p is the current light-path vertex.
 			Vec3 p = shadingData.x;
 			// Connect this vertex to the camera.
@@ -240,16 +259,19 @@ public:
 			float pdf;
 			Vec3 wi = shadingData.bsdf->sample(shadingData, sampler, bsdfVal, pdf);
 			if (pdf <= 0.0f) {
+				std::cout << "pdf<0" << std::endl;
 				return accumulated;
 			}
 			// Update the throughput. Include the cosine term (dot between the new direction and the surface normal).
 			float cosTerm = fabsf(Dot(wi, shadingData.sNormal));
 			Colour newThroughput = pathThroughput * bsdfVal * cosTerm / pdf;
 			// Russian Roulette termination:
-			float rrProb = min(newThroughput.Lum(), 0.9f);
+			//float rrProb = min(newThroughput.Lum(), 0.9f);
+			float rrProb = max(min(newThroughput.Lum(), 0.9f), 0.05f);
 			if (sampler->next() >= rrProb) {
 				return accumulated;
 			}
+			//std::cout << "not killed" << std::endl;
 			newThroughput = newThroughput / rrProb;
 			// Create the new ray from a point offset by EPSILON to avoid self-intersection.
 			r.init(shadingData.x + wi * EPSILON, wi);
@@ -259,6 +281,7 @@ public:
 		}
 		else {
 			// If the ray does not hit anything, optionally add the background contribution.
+			//std::cout << "background" << std::endl;
 			return pathThroughput * scene->background->evaluate(r.dir);
 		}
 	}
@@ -278,7 +301,19 @@ public:
 		/*if (Le.Lum() <= 1e-6f) {
 			std::cout << "Light Dir: " << lightDir.x << ", Luminance: " << Le.Lum() << std::endl;
 		}*/
-		//std::cout << "Luminance: " << Le.Lum() << std::endl;
+		//if (light->isArea())
+		//{
+		//	// Compute the normal at the light position.
+		//	Vec3 n = light->normal(ShadingData(), lightDir);
+		//	// Compute the cosine term between the light direction and the normal.
+		//	float cosThetaLight = max(Dot(lightDir, n), 0.0f);
+		//	// Adjust the throughput by this cosine term.
+		//	Le = Le * cosThetaLight;
+		//	std::cout << "area" << std::endl;
+		//}
+		//std::cout << "pos: " << lightPos.x << " and " << lightPos.y << std::endl;
+		//std::cout << "dir: " << lightDir.x << " and " << lightDir.y << std::endl;
+		//std::cout << "lum: " << Le.Lum() << std::endl;
 		// Create an initial ray from the light.
 		Ray r(lightPos, lightDir);
 		// Compute the initial throughput. The probability of this light sample is pmf * pdfPos * pdfDir.
@@ -288,6 +323,75 @@ public:
 		return lightTracePath(r, throughput, 0, sampler);
 	}
 
+	struct VPL {
+		Vec3 position;
+		Vec3 normal;
+		Colour Le; // The accumulated radiance (or throughput) arriving at this VPL.
+	};
+
+	std::vector<VPL> traceVPLs(Sampler* sampler, int N, Scene* scene) {
+		std::vector<VPL> vpls;
+		vpls.reserve(N);
+		for (int i = 0; i < N; i++) {
+			float pmf;
+			Light* light = scene->sampleLight(sampler, pmf);
+			float pdfPos, pdfDir;
+			Vec3 lightPos = light->samplePositionFromLight(sampler, pdfPos);
+			Vec3 lightDir = light->sampleDirectionFromLight(sampler, pdfDir);
+			Colour Le = light->evaluate(lightDir);
+			// Create an initial ray from the light sample.
+			Ray r(lightPos, lightDir);
+			// Compute initial throughput from light.
+			Colour throughput = Le / (pmf * pdfPos * pdfDir + 1e-6f);
+			// Trace the ray into the scene.
+			IntersectionData intersection = scene->traverse(r);
+			if (intersection.t < FLT_MAX) {
+				ShadingData sd = scene->calculateShadingData(intersection, r);
+				// Only store VPLs from non-specular surfaces (if desired).
+				if (!sd.bsdf->isPureSpecular()) {
+					VPL vpl;
+					vpl.position = sd.x;
+					vpl.normal = sd.sNormal;
+					vpl.Le = throughput; // In a full implementation, you might multiply by BSDF or cosine term.
+					vpls.push_back(vpl);
+				}
+			}
+		}
+		return vpls;
+	}
+
+	Colour gatherVPLs(const ShadingData& sd, const std::vector<VPL>& vpls, Scene* scene) {
+		Colour indirect(0.0f, 0.0f, 0.0f);
+		for (const auto& vpl : vpls) {
+			// Check visibility between the camera hit point and the VPL.
+			if (!scene->visible(sd.x, vpl.position))
+				continue;
+			Vec3 dir = vpl.position - sd.x;
+			float d2 = dir.lengthSq();
+			dir = dir.normalize();
+			float cosCam = max(Dot(sd.sNormal, dir), 0.0f);
+			float cosVPL = max(Dot(vpl.normal, -dir), 0.0f);
+			float G = (cosCam * cosVPL) / (d2 + 1e-6f);
+			Colour f = sd.bsdf->evaluate(sd, dir);
+			// Accumulate the contribution. (A real implementation would also account for the VPL sampling PDF.)
+			indirect = indirect + f * vpl.Le * G;
+		}
+		return indirect;
+	}
+
+	Colour instantRadiosity(Ray& r, Sampler* sampler, const std::vector<VPL>& vpls, Scene* scene) {
+		IntersectionData intersection = scene->traverse(r);
+		ShadingData sd = scene->calculateShadingData(intersection, r);
+		if (sd.t < FLT_MAX) {
+			// Gather indirect lighting from all VPLs.
+			Colour indirect = gatherVPLs(sd, vpls, scene);
+			// Optionally, add direct lighting computed via computeDirect() here.
+			return indirect;
+		}
+		return scene->background->evaluate(r.dir);
+	}
+
+	
 	static const int TILE_SIZE = 32;
 	void render()
 	{
@@ -348,6 +452,8 @@ public:
 			//int threadID = std::this_thread::get_id().hash();
 			int threadID = static_cast<int>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 			//int threadID = std::this_thread::get_id();
+			int numVPLs = 100;  // Adjust as needed.
+			std::vector<VPL> vpls = traceVPLs(samplers, numVPLs, scene);
 			while (true)
 			{
 				int tileIndex = nextTile.fetch_add(1, std::memory_order_relaxed);
@@ -371,8 +477,10 @@ public:
 						//Colour col = viewNormals(ray);
 						//Colour col = albedo(ray);
 						Colour initialThroughput(1.0f, 1.0f, 1.0f);
-						Colour col = pathTrace(ray, initialThroughput, 0, samplers);
+						//Colour col = pathTrace(ray, initialThroughput, 0, samplers);
 						//Colour col = lightTrace(samplers);
+						std::vector<VPL> vpls = traceVPLs(samplers, numVPLs, scene);
+						Colour col = instantRadiosity(ray, samplers, vpls, scene);
 						//film->splat(px, py, col);
 						film->splat(px, py, col);
 						unsigned char r = static_cast<unsigned char>(col.r * 255);
