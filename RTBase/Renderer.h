@@ -326,70 +326,68 @@ public:
 	struct VPL {
 		Vec3 position;
 		Vec3 normal;
-		Colour Le; // The accumulated radiance (or throughput) arriving at this VPL.
+		Colour flux; // The accumulated radiance (or throughput) arriving at this VPL.
 	};
+	std::vector<VPL> precomputedVPLs;
 
-	std::vector<VPL> traceVPLs(Sampler* sampler, int N, Scene* scene) {
-		std::vector<VPL> vpls;
-		vpls.reserve(N);
-		for (int i = 0; i < N; i++) {
+	// --- Instant Radiosity Functions ---
+	// VPL structure is defined above.
+	std::vector<VPL> traceVPLs(Sampler* sampler, int numVPLs)
+	{
+		std::vector<VPL> vplList;
+		vplList.reserve(numVPLs);
+		for (int i = 0; i < numVPLs; i++) {
 			float pmf;
 			Light* light = scene->sampleLight(sampler, pmf);
 			float pdfPos, pdfDir;
 			Vec3 lightPos = light->samplePositionFromLight(sampler, pdfPos);
 			Vec3 lightDir = light->sampleDirectionFromLight(sampler, pdfDir);
 			Colour Le = light->evaluate(lightDir);
-			// Create an initial ray from the light sample.
-			Ray r(lightPos, lightDir);
-			// Compute initial throughput from light.
 			Colour throughput = Le / (pmf * pdfPos * pdfDir + 1e-6f);
-			// Trace the ray into the scene.
-			IntersectionData intersection = scene->traverse(r);
-			if (intersection.t < FLT_MAX) {
-				ShadingData sd = scene->calculateShadingData(intersection, r);
-				// Only store VPLs from non-specular surfaces (if desired).
-				if (!sd.bsdf->isPureSpecular()) {
+			Ray r(lightPos, lightDir);
+			IntersectionData isect = scene->traverse(r);
+			if (isect.t < FLT_MAX) {
+				ShadingData shadingData = scene->calculateShadingData(isect, r);
+				if (!shadingData.bsdf->isPureSpecular()) {
 					VPL vpl;
-					vpl.position = sd.x;
-					vpl.normal = sd.sNormal;
-					vpl.Le = throughput; // In a full implementation, you might multiply by BSDF or cosine term.
-					vpls.push_back(vpl);
+					vpl.position = shadingData.x;
+					vpl.normal = shadingData.sNormal;
+					vpl.flux = throughput; // / float(numVPLs)
+					vplList.push_back(vpl);
 				}
 			}
 		}
-		return vpls;
+		return vplList;
 	}
 
-	Colour gatherVPLs(const ShadingData& sd, const std::vector<VPL>& vpls, Scene* scene) {
+	// Precompute VPLs once per frame.
+	void precomputeVPLs(Sampler* sampler, int numVPLs) {
+		precomputedVPLs = traceVPLs(sampler, numVPLs);
+	}
+
+	Colour evaluateInstantRadiosityPixel(Ray& cameraRay, const std::vector<VPL>& vplList)
+	{
+		IntersectionData isect = scene->traverse(cameraRay);
+		if (isect.t >= FLT_MAX) {
+			return scene->background->evaluate(cameraRay.dir);
+		}
+		ShadingData shadingData = scene->calculateShadingData(isect, cameraRay);
 		Colour indirect(0.0f, 0.0f, 0.0f);
-		for (const auto& vpl : vpls) {
-			// Check visibility between the camera hit point and the VPL.
-			if (!scene->visible(sd.x, vpl.position))
-				continue;
-			Vec3 dir = vpl.position - sd.x;
+		for (const VPL& vpl : vplList) {
+			Vec3 dir = vpl.position - shadingData.x;
 			float d2 = dir.lengthSq();
 			dir = dir.normalize();
-			float cosCam = max(Dot(sd.sNormal, dir), 0.0f);
-			float cosVPL = max(Dot(vpl.normal, -dir), 0.0f);
-			float G = (cosCam * cosVPL) / (d2 + 1e-6f);
-			Colour f = sd.bsdf->evaluate(sd, dir);
-			// Accumulate the contribution. (A real implementation would also account for the VPL sampling PDF.)
-			indirect = indirect + f * vpl.Le * G;
+			float cosThetaCam = max(Dot(shadingData.sNormal, dir), 0.0f);
+			float cosThetaVPL = max(Dot(vpl.normal, -dir), 0.0f);
+			float G = (cosThetaCam * cosThetaVPL) / (d2 + 1e-6f);
+			if (!scene->visible(shadingData.x, vpl.position))
+				continue;
+			Colour f = shadingData.bsdf->evaluate(shadingData, dir);
+			indirect = indirect + (vpl.flux * f * G);
 		}
 		return indirect;
 	}
-
-	Colour instantRadiosity(Ray& r, Sampler* sampler, const std::vector<VPL>& vpls, Scene* scene) {
-		IntersectionData intersection = scene->traverse(r);
-		ShadingData sd = scene->calculateShadingData(intersection, r);
-		if (sd.t < FLT_MAX) {
-			// Gather indirect lighting from all VPLs.
-			Colour indirect = gatherVPLs(sd, vpls, scene);
-			// Optionally, add direct lighting computed via computeDirect() here.
-			return indirect;
-		}
-		return scene->background->evaluate(r.dir);
-	}
+	// --- End Instant Radiosity Functions ---
 
 	
 	static const int TILE_SIZE = 32;
@@ -403,6 +401,7 @@ public:
 		std::vector<std::thread> workers;
 		int numThreads = numProcs;
 		workers.reserve(numThreads);
+		precomputeVPLs(samplers, 100);
 		/*
 		auto renderTile = [&](int tileX, int tileY, int threadID) {
 			int startX = tileX * TILE_SIZE;
@@ -452,8 +451,8 @@ public:
 			//int threadID = std::this_thread::get_id().hash();
 			int threadID = static_cast<int>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 			//int threadID = std::this_thread::get_id();
-			int numVPLs = 100;  // Adjust as needed.
-			std::vector<VPL> vpls = traceVPLs(samplers, numVPLs, scene);
+			//int numVPLs = 100;  // Adjust as needed.
+			//std::vector<VPL> vpls = traceVPLs(samplers, numVPLs, scene);
 			while (true)
 			{
 				int tileIndex = nextTile.fetch_add(1, std::memory_order_relaxed);
@@ -479,8 +478,8 @@ public:
 						Colour initialThroughput(1.0f, 1.0f, 1.0f);
 						//Colour col = pathTrace(ray, initialThroughput, 0, samplers);
 						//Colour col = lightTrace(samplers);
-						std::vector<VPL> vpls = traceVPLs(samplers, numVPLs, scene);
-						Colour col = instantRadiosity(ray, samplers, vpls, scene);
+						//std::vector<VPL> vplList = traceVPLs(samplers, 100); // e.g., 100 VPLs
+						Colour col = evaluateInstantRadiosityPixel(ray, precomputedVPLs);
 						//film->splat(px, py, col);
 						film->splat(px, py, col);
 						unsigned char r = static_cast<unsigned char>(col.r * 255);
