@@ -48,22 +48,54 @@ public:
 	static Colour fresnelConductor(float cosTheta, Colour ior, Colour k)
 	{
 		// Add code here
-		return Colour(1.0f, 1.0f, 1.0f);
+		cosTheta = std::fabs(cosTheta);
+		// Compute squares
+		Colour eta2 = ior * ior;
+		Colour k2 = k * k;
+		// 2 * eta * cosTheta (per channel)
+		Colour twoEtaCos = ior * (2.0f * cosTheta);
+		float cosTheta2 = cosTheta * cosTheta;
+
+		// Rs: parallel polarization
+		Colour Rs_num = (eta2 + k2) * Colour(cosTheta2, cosTheta2, cosTheta2) - twoEtaCos + Colour(1.0f, 1.0f, 1.0f);
+		Colour Rs_den = (eta2 + k2) * Colour(cosTheta2, cosTheta2, cosTheta2) + twoEtaCos + Colour(1.0f, 1.0f, 1.0f);
+		Colour Rs = Rs_num / Rs_den;
+
+		// Rp: perpendicular polarization
+		Colour Rp_num = (eta2 + k2) - twoEtaCos + Colour(cosTheta2, cosTheta2, cosTheta2);
+		Colour Rp_den = (eta2 + k2) + twoEtaCos + Colour(cosTheta2, cosTheta2, cosTheta2);
+		Colour Rp = Rp_num / Rp_den;
+
+		return (Rs + Rp) * 0.5f;
 	}
 	static float lambdaGGX(Vec3 wi, float alpha)
 	{
 		// Add code here
-		return 1.0f;
+		// cosTheta is the z component in local space.
+		float cosTheta = wi.z;
+		if (cosTheta <= 0.0f)
+			return 0.0f;
+		float sinTheta = sqrtf(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+		float tanTheta = sinTheta / cosTheta;
+		float a2Tan2 = (alpha * alpha) * (tanTheta * tanTheta);
+		return (sqrtf(1.0f + a2Tan2) - 1.0f) / 2.0f;
 	}
 	static float Gggx(Vec3 wi, Vec3 wo, float alpha)
 	{
 		// Add code here
-		return 1.0f;
+		float lambda_i = lambdaGGX(wi, alpha);
+		float lambda_o = lambdaGGX(wo, alpha);
+		return 1.0f / (1.0f + lambda_i + lambda_o);
 	}
 	static float Dggx(Vec3 h, float alpha)
 	{
 		// Add code here
-		return 1.0f;
+		float cosThetaH = std::max(h.z, 0.0f);
+		float cosThetaH2 = cosThetaH * cosThetaH;
+		float alpha2 = alpha * alpha;
+		float denom = (cosThetaH2 * (alpha2 - 1.0f) + 1.0f);
+		denom = M_PI * denom * denom;
+		return alpha2 / denom;
 	}
 };
 
@@ -209,22 +241,85 @@ public:
 	Vec3 sample(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
 	{
 		// Replace this with Conductor sampling code
-		Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
-		pdf = wi.z / M_PI;
-		reflectedColour = albedo->sample(shadingData.tu, shadingData.tv) / M_PI;
-		wi = shadingData.frame.toWorld(wi);
+		// Convert the outgoing direction to local coordinates.
+		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
+
+		// Sample the half-vector h in local space using GGX distribution.
+		float r1 = sampler->next();
+		float r2 = sampler->next();
+		float phi = 2.0f * M_PI * r1;
+		// Inversion for GGX:
+		float tanTheta2 = (alpha * alpha * r2) / (1.0f - r2);
+		float cosTheta_h = 1.0f / sqrtf(1.0f + tanTheta2);
+		float sinTheta_h = sqrtf(std::max(0.0f, 1.0f - cosTheta_h * cosTheta_h));
+		Vec3 hLocal(sinTheta_h * cosf(phi), sinTheta_h * sinf(phi), cosTheta_h);
+
+		// Reflect woLocal about hLocal: wiLocal = reflect(-woLocal, hLocal)
+		Vec3 wiLocal = -woLocal + hLocal * (2.0f * Dot(woLocal, hLocal));
+		// Ensure the sampled wi is above the surface.
+		if (wiLocal.z <= 0)
+		{
+			pdf = 0.0f;
+			reflectedColour = Colour(0.0f, 0.0f, 0.0f);
+			return Vec3(0.0f, 0.0f, 0.0f);
+		}
+
+		// Transform the sampled direction back to world space.
+		Vec3 wi = shadingData.frame.toWorld(wiLocal);
+
+		// Compute Fresnel term for conductors.
+		// Use the dot product between wiLocal and the half-vector as the cosine.
+		float cosTheta = fabsf(Dot(wiLocal, hLocal));
+		Colour F = ShadingHelper::fresnelConductor(cosTheta, eta, k);
+
+		// Compute the GGX normal distribution function (D) for h.
+		float D = ShadingHelper::Dggx(hLocal, alpha);
+
+		// Compute the geometry (masking-shadowing) term G.
+		float G = ShadingHelper::Gggx(wiLocal, woLocal, alpha);
+
+		// Denominator: 4 * |n·wo| * |n·wi|
+		float denom = 4.0f * fabsf(woLocal.z) * fabsf(wiLocal.z) + 1e-6f;
+
+		// Microfacet BRDF value.
+		Colour brdf = F * D * G / denom;
+
+		// Get the tint from the albedo texture.
+		reflectedColour = albedo->sample(shadingData.tu, shadingData.tv);
+
+		// Compute PDF:
+		// PDF for the half-vector is: pdf_h = D(h) * cosTheta_h.
+		float pdf_h = D * hLocal.z;
+		// Conversion: pdf(wi) = pdf_h / (4 * |woLocal · h|)
+		pdf = pdf_h / (4.0f * fabsf(Dot(woLocal, hLocal)) + 1e-6f);
+
 		return wi;
 	}
 	Colour evaluate(const ShadingData& shadingData, const Vec3& wi)
 	{
 		// Replace this with Conductor evaluation code
-		return albedo->sample(shadingData.tu, shadingData.tv) / M_PI;
+		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
+		Vec3 wiLocal = shadingData.frame.toLocal(wi);
+		// Compute the half-vector h.
+		Vec3 hLocal = (wiLocal + woLocal).normalize();
+		float cosTheta = fabsf(Dot(wiLocal, hLocal));
+		Colour F = ShadingHelper::fresnelConductor(cosTheta, eta, k);
+		float D = ShadingHelper::Dggx(hLocal, alpha);
+		float G = ShadingHelper::Gggx(wiLocal, woLocal, alpha);
+		float denom = 4.0f * fabsf(woLocal.z) * fabsf(wiLocal.z) + 1e-6f;
+		Colour brdf = F * D * G / denom;
+		Colour tint = albedo->sample(shadingData.tu, shadingData.tv);
+		return brdf * tint;
 	}
 	float PDF(const ShadingData& shadingData, const Vec3& wi)
 	{
 		// Replace this with Conductor PDF
+		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
 		Vec3 wiLocal = shadingData.frame.toLocal(wi);
-		return SamplingDistributions::cosineHemispherePDF(wiLocal);
+		Vec3 hLocal = (wiLocal + woLocal).normalize();
+		float D = ShadingHelper::Dggx(hLocal, alpha);
+		float pdf_h = D * hLocal.z;
+		return pdf_h / (4.0f * fabsf(Dot(woLocal, hLocal)) + 1e-6f);
 	}
 	bool isPureSpecular()
 	{

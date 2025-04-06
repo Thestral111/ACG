@@ -42,10 +42,12 @@ int main(int argc, char *argv[])
 	
 	// Initialize default parameters
 	//std::string sceneName = "cornell-box";
-	//std::string sceneName = "living-room";
-	//std::string sceneName = "kitchen";
-	std::string sceneName = "bathroom";
-	//std::string sceneName = "car2";
+	std::string sceneName = "MoreScenes/living-room";
+	//std::string sceneName = "MoreScenes/kitchen";
+	//std::string sceneName = "MoreScenes/bathroom";
+	//std::string sceneName = "MoreScenes/dining-room";
+	//std::string sceneName = "MoreScenes/coffee";
+	//std::string sceneName = "MoreScenes/car2";
 	//std::string sceneName = "Terrain";
 	//std::string sceneName = "MaterialsScene";
 	std::string filename = "GI.hdr";
