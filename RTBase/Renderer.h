@@ -231,12 +231,18 @@ public:
 				//float cos4 = cos2 * cos2;
 				float cos4 = pow(cosThetaCam, 4);
 				float we = 1.0f / (scene->camera.Afilm * cos4);
-				//int idx = (int)y * film->width + (int)x;
-				/*if (idx <= film->width * film->height) {
-					film->albedoBuffer[idx] = col;
-					film->normalBuffer[idx] = Colour(fabsf(n.x), fabsf(n.y), fabsf(n.z));
-				}*/
+				/*int idx = y * film->width + x;
+				film->albedoBuffer[idx * 3 + 0] = col.r;
+				film->albedoBuffer[idx * 3 + 1] = col.g;
+				film->albedoBuffer[idx * 3 + 2] = col.b;
+
+				film->normalBuffer[idx * 3 + 0] = fabsf(n.x);
+				film->normalBuffer[idx * 3 + 1] = fabsf(n.y);
+				film->normalBuffer[idx * 3 + 2] = fabsf(n.z);*/
 				film->splat(x, y, col * G * we);
+				// *** Update the AOV buffers here ***
+				Ray camRay = scene->camera.generateRay(x + 0.5f, y + 0.5f);
+				film->updateAOV(x, y, albedo(camRay), viewNormals(camRay));
 			}
 		}
 		else {
@@ -605,8 +611,11 @@ public:
 			worker.join();
 		}
 
-		//Denoiser::apply(film);
-
+		Denoiser::apply(film);
+		savePNG("test.png");
+		saveHDR("test.hdr");
+		stbi_write_png("denoised.png",film->width, film->height, 3, film->colorBuffer, canvas->getWidth() * 3);
+		stbi_write_hdr("denoised.hdr", film->width, film->height, 3, film->colorBuffer);
 	}
 
 	//void renderLT()
@@ -696,7 +705,7 @@ public:
 		for (auto& worker : workers) {
 			worker.join();
 		}
-		Denoiser::apply(film);
+		//Denoiser::apply(film);
 	}
 
 	int renderMode = 1;
