@@ -582,6 +582,7 @@ public:
 						//Colour col = evaluateInstantRadiosityPixel(ray, precomputedVPLs);
 						//film->splat(px, py, col);
 						film->splat(px, py, col);
+						film->updateAOV(x, y, albedo(ray), viewNormals(ray));
 						unsigned char r = static_cast<unsigned char>(col.r * 255);
 						unsigned char g = static_cast<unsigned char>(col.g * 255);
 						unsigned char b = static_cast<unsigned char>(col.b * 255);

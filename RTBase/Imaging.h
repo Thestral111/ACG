@@ -311,4 +311,15 @@ public:
 		stbi_write_hdr(filename.c_str(), width, height, 3, (float*)hdrpixels);
 		delete[] hdrpixels;
 	}
+
+	void updateAOV(int x, int y, const Colour& albedo, const Colour& normal) {
+		int idx = y * width + x;
+		albedoBuffer[idx * 3 + 0] = albedo.r;
+		albedoBuffer[idx * 3 + 1] = albedo.g;
+		albedoBuffer[idx * 3 + 2] = albedo.b;
+		normalBuffer[idx * 3 + 0] = normal.r;
+		normalBuffer[idx * 3 + 1] = normal.g;
+		normalBuffer[idx * 3 + 2] = normal.b;
+	}
+
 };
