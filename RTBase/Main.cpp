@@ -138,7 +138,9 @@ int main(int argc, char *argv[])
 		}
 		// Time how long a render call takes
 		timer.reset();
-		rt.render();
+		//rt.renderAdaptive();
+		//rt.render();
+		rt.renderLT();
 		float t = timer.dt();
 		// Write
 		std::cout << t << std::endl;

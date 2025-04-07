@@ -232,7 +232,7 @@ public:
 		float pdfPosition = 0.0f;
 		Vec3 lightPos = light->samplePositionFromLight(sampler, pdfPosition);
 		float pdfDirection = 0.0f;
-		Vec3 lightDir = light->sampleDirectionFromLight(sampler, pdfDirection);
+		Vec3 lightDir = light->sampleDirectionFromLightLT(sampler, pdfDirection);
 		//lightDir = lightDir.normalize();
 		float pdfTotal = pmf * pdfPosition * pdfDirection;
 		//if (pdfTotal <= 0.0f) return;
@@ -386,8 +386,7 @@ public:
 			//int threadID = std::this_thread::get_id().hash();
 			int threadID = static_cast<int>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 			//int threadID = std::this_thread::get_id();
-			//int numVPLs = 100;  
-			//std::vector<VPL> vpls = traceVPLs(samplers, numVPLs, scene);
+			
 			while (true)
 			{
 				int tileIndex = nextTile.fetch_add(1, std::memory_order_relaxed);
@@ -423,7 +422,7 @@ public:
 						}
 						
 						film->splat(px, py, col);
-						//film->updateAOV(x, y, albedo(ray), viewNormals(ray));
+						film->updateAOV(x, y, albedo(ray), viewNormals(ray));
 						unsigned char r = static_cast<unsigned char>(col.r * 255);
 						unsigned char g = static_cast<unsigned char>(col.g * 255);
 						unsigned char b = static_cast<unsigned char>(col.b * 255);
@@ -446,11 +445,11 @@ public:
 			worker.join();
 		}
 
-		/*Denoiser::apply(film);
+		Denoiser::apply(film);
 		savePNG("test.png");
 		saveHDR("test.hdr");
 		stbi_write_png("denoised.png",film->width, film->height, 3, film->colorBuffer, canvas->getWidth() * 3);
-		stbi_write_hdr("denoised.hdr", film->width, film->height, 3, film->colorBuffer);*/
+		stbi_write_hdr("denoised.hdr", film->width, film->height, 3, film->colorBuffer);
 	}
 
 	
@@ -504,7 +503,7 @@ public:
 		for (auto& worker : workers) {
 			worker.join();
 		}
-		//Denoiser::apply(film);
+		savePNG("test.png");
 	}
 
 
@@ -548,7 +547,7 @@ public:
 				std::vector<Colour> pixelSumSq(tileWidth * tileHeight, Colour(0.0f, 0.0f, 0.0f));
 				std::vector<int> pixelSamples(tileWidth * tileHeight, 0);
 
-				// Initial Pass: take a fixed number of samples per pixel
+				// Initial Pass: take a fixed number of samples 
 				for (int ty = 0; ty < tileHeight; ty++) {
 					for (int tx = 0; tx < tileWidth; tx++) {
 						int idx = ty * tileWidth + tx;
@@ -632,7 +631,8 @@ public:
 		for (auto& worker : workers) {
 			worker.join();
 		}
-		Denoiser::apply(film);
+		/*Denoiser::apply(film);*/
+		savePNG("test.png");
 	}
 
 	int getSPP()

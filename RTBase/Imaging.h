@@ -217,7 +217,6 @@ public:
 		}
 		else
 		{
-			// Outside the support.
 			return 0.0f;
 		}
 	}

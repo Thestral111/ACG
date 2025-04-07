@@ -25,6 +25,7 @@ public:
 	virtual float totalIntegratedPower() = 0;
 	virtual Vec3 samplePositionFromLight(Sampler* sampler, float& pdf) = 0;
 	virtual Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf) = 0;
+	virtual Vec3 sampleDirectionFromLightLT(Sampler* sampler, float& pdf) = 0;
 };
 
 class AreaLight : public Light
@@ -66,6 +67,17 @@ public:
 		return triangle->sample(sampler, pdf);
 	}
 	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf)
+	{
+		// Add code to sample a direction from the light
+		Vec3 wi = Vec3(0, 0, -1); // 0 0 1
+		pdf = 1.0f;
+		/*Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
+		pdf = SamplingDistributions::cosineHemispherePDF(wi);*/
+		Frame frame;
+		frame.fromVector(triangle->gNormal());
+		return frame.toWorld(wi);
+	}
+	Vec3 sampleDirectionFromLightLT(Sampler* sampler, float& pdf)
 	{
 		// Add code to sample a direction from the light
 		//Vec3 wi = Vec3(0, 0, -1); // 0 0 1
@@ -122,6 +134,12 @@ public:
 		return p;
 	}
 	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf)
+	{
+		Vec3 wi = SamplingDistributions::uniformSampleSphere(sampler->next(), sampler->next());
+		pdf = SamplingDistributions::uniformSpherePDF(wi);
+		return wi;
+	}
+	Vec3 sampleDirectionFromLightLT(Sampler* sampler, float& pdf)
 	{
 		Vec3 wi = SamplingDistributions::uniformSampleSphere(sampler->next(), sampler->next());
 		pdf = SamplingDistributions::uniformSpherePDF(wi);
@@ -306,6 +324,15 @@ public:
 		return p;
 	}
 	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf)
+	{
+		// Replace this tabulated sampling of environment maps
+		/*Vec3 wi = SamplingDistributions::uniformSampleSphere(sampler->next(), sampler->next());
+		pdf = SamplingDistributions::uniformSpherePDF(wi);
+		return wi;*/
+		Colour dummy;
+		return sample(ShadingData(), sampler, dummy, pdf);
+	}
+	Vec3 sampleDirectionFromLightLT(Sampler* sampler, float& pdf)
 	{
 		// Replace this tabulated sampling of environment maps
 		/*Vec3 wi = SamplingDistributions::uniformSampleSphere(sampler->next(), sampler->next());
