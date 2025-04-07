@@ -52,7 +52,7 @@ public:
 		// Compute squares
 		Colour eta2 = ior * ior;
 		Colour k2 = k * k;
-		// 2 * eta * cosTheta (per channel)
+		
 		Colour twoEtaCos = ior * (2.0f * cosTheta);
 		float cosTheta2 = cosTheta * cosTheta;
 
@@ -71,7 +71,6 @@ public:
 	static float lambdaGGX(Vec3 wi, float alpha)
 	{
 		// Add code here
-		// cosTheta is the z component in local space.
 		float cosTheta = wi.z;
 		if (cosTheta <= 0.0f)
 			return 0.0f;
@@ -178,22 +177,18 @@ public:
 	Vec3 sample(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
 	{
 		// Replace this with Mirror sampling code
-		 // Convert the outgoing direction to the local (shading) frame.
+		// Convert to local
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
 
-		// Compute the perfect reflection in local space.
-		// For a local coordinate system where the shading normal is (0,0,1),
-		// the reflection of woLocal = (x, y, z) is given by (-x, -y, z).
+		// Compute the perfect reflection
 		Vec3 wiLocal(-woLocal.x, -woLocal.y, woLocal.z);
 
-		// Transform the reflection direction back to world space.
+		// Transform the reflection direction back to world space
 		Vec3 wi = shadingData.frame.toWorld(wiLocal);
 
-		// For a delta distribution, the PDF is defined in a way that
-		// integration is done solely via sampling, so we can set it to 1.
 		pdf = 1.0f;
 
-		// The reflectance is given by the albedo texture sampled at the given UVs.
+		// The reflectance
 		reflectedColour = albedo->sample(shadingData.tu, shadingData.tv);
 
 		return wi;
@@ -241,10 +236,10 @@ public:
 	Vec3 sample(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
 	{
 		// Replace this with Conductor sampling code
-		// Convert the outgoing direction to local coordinates.
+		
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
 
-		// Sample the half-vector h in local space using GGX distribution.
+		// Sample the half-vector h in local space using GGX distribution
 		float r1 = sampler->next();
 		float r2 = sampler->next();
 		float phi = 2.0f * M_PI * r1;
@@ -256,7 +251,7 @@ public:
 
 		// Reflect woLocal about hLocal: wiLocal = reflect(-woLocal, hLocal)
 		Vec3 wiLocal = -woLocal + hLocal * (2.0f * Dot(woLocal, hLocal));
-		// Ensure the sampled wi is above the surface.
+		// Ensure the sampled wi is above the surface
 		if (wiLocal.z <= 0)
 		{
 			pdf = 0.0f;
@@ -264,33 +259,29 @@ public:
 			return Vec3(0.0f, 0.0f, 0.0f);
 		}
 
-		// Transform the sampled direction back to world space.
+		// Transform the sampled direction back to world space
 		Vec3 wi = shadingData.frame.toWorld(wiLocal);
 
-		// Compute Fresnel term for conductors.
-		// Use the dot product between wiLocal and the half-vector as the cosine.
+		// Compute Fresnel term for conductors
 		float cosTheta = fabsf(Dot(wiLocal, hLocal));
 		Colour F = ShadingHelper::fresnelConductor(cosTheta, eta, k);
 
-		// Compute the GGX normal distribution function (D) for h.
+		// Compute the GGX normal distribution function (D) for h
 		float D = ShadingHelper::Dggx(hLocal, alpha);
 
-		// Compute the geometry (masking-shadowing) term G.
+		// Compute the geometry (masking-shadowing) term G
 		float G = ShadingHelper::Gggx(wiLocal, woLocal, alpha);
 
-		// Denominator: 4 * |n·wo| * |n·wi|
+		// Denominator
 		float denom = 4.0f * fabsf(woLocal.z) * fabsf(wiLocal.z) + 1e-6f;
 
-		// Microfacet BRDF value.
+		// Microfacet BRDF value
 		Colour brdf = F * D * G / denom;
 
-		// Get the tint from the albedo texture.
 		reflectedColour = albedo->sample(shadingData.tu, shadingData.tv);
 
-		// Compute PDF:
-		// PDF for the half-vector is: pdf_h = D(h) * cosTheta_h.
+		// Compute PDF
 		float pdf_h = D * hLocal.z;
-		// Conversion: pdf(wi) = pdf_h / (4 * |woLocal · h|)
 		pdf = pdf_h / (4.0f * fabsf(Dot(woLocal, hLocal)) + 1e-6f);
 
 		return wi;
@@ -351,54 +342,50 @@ public:
 	Vec3 sample(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
 	{
 		// Replace this with Glass sampling code
-		// Convert outgoing vector to local space (where the shading normal is (0,0,1)).
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
-		// In local space, the z-component is the cosine of the angle with the normal.
 		float cosThetaI = woLocal.z;
-		// Compute Fresnel reflectance for dielectrics.
+		// Compute Fresnel reflectance
 		float F = ShadingHelper::fresnelDielectric(fabs(cosThetaI), intIOR, extIOR);
-		// Choose event based on a uniform sample.
+		// Choose event based on a uniform sample
 		float xi = sampler->next();
 		Vec3 wi;
 		if (xi < F) {
 			// --- Reflection ---
-			// In local space, perfect reflection is given by (−x, −y, z)
 			Vec3 wiLocal(-woLocal.x, -woLocal.y, woLocal.z);
 			wi = shadingData.frame.toWorld(wiLocal);
-			// For a mirror, we assume the reflectance is given by the albedo (tint).
+			// like mirror
 			reflectedColour = albedo->sample(shadingData.tu, shadingData.tv);
-			// For delta functions we treat the discrete PDF as the event probability.
+
 			pdf = F;
 		}
 		else {
 			// --- Refraction ---
-			// Determine the relative index of refraction.
-			// If cosThetaI > 0, the ray is leaving the material.
+			
 			float eta = (cosThetaI > 0.0f) ? extIOR / intIOR : intIOR / extIOR;
-			// Compute sin^2 theta_t using Snell's law.
+			// Snell's law.
 			float sinThetaT2 = eta * eta * (1.0f - cosThetaI * cosThetaI);
 			if (sinThetaT2 > 1.0f) {
-				// Total internal reflection: treat as reflection.
+				// total internal reflection
 				Vec3 wiLocal(-woLocal.x, -woLocal.y, woLocal.z);
 				wi = shadingData.frame.toWorld(wiLocal);
 				reflectedColour = albedo->sample(shadingData.tu, shadingData.tv);
 				pdf = 1.0f;
 			}
 			else {
-				// Compute cosine of transmitted angle.
+
 				float cosThetaT = sqrtf(1.0f - sinThetaT2);
 				Vec3 wiLocal;
-				// The sign of cosThetaT depends on the incident side.
+
 				if (cosThetaI > 0.0f) {
-					// Ray leaving: transmitted ray goes into the opposite hemisphere.
+					// ray leaveing
 					wiLocal = Vec3(eta * -woLocal.x, eta * -woLocal.y, -cosThetaT);
 				}
 				else {
-					// Ray entering: transmitted ray remains in the same hemisphere as the normal.
+					// ray entering
 					wiLocal = Vec3(eta * -woLocal.x, eta * -woLocal.y, cosThetaT);
 				}
 				wi = shadingData.frame.toWorld(wiLocal);
-				// The transmitted radiance is scaled by (1-F) and by eta^2 (to account for the change in area).
+
 				reflectedColour = albedo->sample(shadingData.tu, shadingData.tv) * (1.0f - F) * (eta * eta);
 				pdf = 1.0f - F;
 			}
@@ -545,44 +532,42 @@ public:
 	Vec3 sample(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
 	{
 		// Replace this with Plastic sampling code
-		// Transform the outgoing direction into the local frame.
+
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
-		// Compute Fresnel term (using Schlick's approximation).
+		// Compute Fresnel
 		float cosTheta = fabsf(woLocal.z);
 		float F = ShadingHelper::fresnelDielectric(cosTheta, intIOR, extIOR);
 
-		// Decide which lobe to sample: specular with probability F, diffuse with probability (1 - F)
+
 		float xi = sampler->next();
 		Vec3 wi;
 		float pdfSpec = 0.0f, pdfDiff = 0.0f;
 		if (xi < F) {
-			// --- Specular (Glossy) Sampling using a Phong lobe ---
+			// glossy phong reflection
 			float n = alphaToPhongExponent();
-			// Sample the half-vector h from a cosine power (Phong) distribution.
 			float r1 = sampler->next();
 			float r2 = sampler->next();
 			float phi = 2.0f * M_PI * r1;
-			// In cosine-power sampling, the z component is:
+			// cosine-power sampling
 			float cosThetaH = powf(r2, 1.0f / (n + 1.0f));
 			float sinThetaH = sqrtf(1.0f - cosThetaH * cosThetaH);
 			Vec3 h(sinThetaH * cosf(phi), sinThetaH * sinf(phi), cosThetaH);
-			// Reflect woLocal about h:
+			// Reflect woLocal about h
 			wi = -woLocal + h * 2.0f * Dot(woLocal, h);
-			// Convert back to world space:
+			
 			wi = shadingData.frame.toWorld(wi);
-			// Compute the PDF for the half-vector:
+			// pdf
 			float pdf_h = ((n + 1.0f) * powf(std::max(h.z, 0.0f), n)) / (2.0f * M_PI);
-			// The mapping from half-vector to wi introduces a Jacobian factor: 1 / (4 * |Dot(woLocal, h)|)
 			pdfSpec = pdf_h / (4.0f * fabsf(Dot(woLocal, h)) + 1e-6f);
-			// For a glossy specular, we assume a white specular reflection (can be adjusted as needed)
+			// assume white specular
 			reflectedColour = Colour(1.0f, 1.0f, 1.0f);
 			pdf = F * pdfSpec;
 		}
 		else {
-			// --- Diffuse Sampling: Cosine-Weighted Hemisphere Sampling ---
+			// Diffuse Sampling
 			Vec3 wiLocal = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
 			wi = shadingData.frame.toWorld(wiLocal);
-			// Diffuse component: Lambertian diffuse BRDF = albedo/π.
+
 			reflectedColour = albedo->sample(shadingData.tu, shadingData.tv) / M_PI;
 			pdfDiff = SamplingDistributions::cosineHemispherePDF(wiLocal);
 			pdf = (1.0f - F) * pdfDiff;
@@ -592,21 +577,20 @@ public:
 	Colour evaluate(const ShadingData& shadingData, const Vec3& wi)
 	{
 		// Replace this with Plastic evaluation code
-		// Transform incoming direction to local space.
         Vec3 wiLocal = shadingData.frame.toLocal(wi);
         Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
         float cosTheta = fabsf(woLocal.z);
-        // Compute Fresnel term.
+        // Compute Fresnel
         float F = ShadingHelper::fresnelDielectric(cosTheta, intIOR, extIOR);
-        // Diffuse term (Lambertian): albedo / π.
+        // Diffuse term
         Colour diffuse = albedo->sample(shadingData.tu, shadingData.tv) / M_PI;
-        // Specular term using a Phong lobe:
+        // Specular term using a Phong lobe
         float n = alphaToPhongExponent();
-        // Compute half-vector h from wiLocal and woLocal:
+        
         Vec3 h = (wiLocal + woLocal).normalize();
         float specularTerm = ((n + 2.0f) / (2.0f * M_PI)) * powf(std::max(h.z, 0.0f), n);
         Colour specular = Colour(1.0f, 1.0f, 1.0f) * specularTerm;
-        // Return a weighted sum: specular is weighted by F, diffuse by (1-F).
+        // return a weighted sum
         return diffuse * (1.0f - F) + specular * F;
 	}
 	float PDF(const ShadingData& shadingData, const Vec3& wi)
@@ -616,9 +600,9 @@ public:
 		Vec3 woLocal = shadingData.frame.toLocal(shadingData.wo);
 		float cosTheta = fabsf(woLocal.z);
 		float F = ShadingHelper::fresnelDielectric(cosTheta, intIOR, extIOR);
-		// Diffuse PDF:
+		// Diffuse PDF
 		float pdfDiff = SamplingDistributions::cosineHemispherePDF(wiLocal);
-		// Specular PDF: compute as in sample():
+		// Specular PDF
 		float n = alphaToPhongExponent();
 		Vec3 h = (wiLocal + woLocal).normalize();
 		float pdf_h = ((n + 1.0f) * powf(std::max(h.z, 0.0f), n)) / (2.0f * M_PI);

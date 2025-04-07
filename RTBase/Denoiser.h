@@ -31,10 +31,8 @@ public:
         float* outputBuffer = new float[width * height * 3];
         filter.setImage("output", outputBuffer, oidn::Format::Float3, width, height);
 
-        // Tell the filter that the input image is HDR.
         filter.set("hdr", true);
 
-        // Commit filter settings.
         filter.commit();
 
         // Execute the denoising.
@@ -42,19 +40,15 @@ public:
 
         // Check for errors.
         //const char* errorMessage = oidn::getError(device);
-        // Check for errors.
         const char* errorMessage;
         if (device.getError(errorMessage) != oidn::Error::None) {
             std::cerr << "OIDN error: " << errorMessage << std::endl;
         }
-        /*if (errorMessage) {
-            std::cerr << "OIDN error: " << errorMessage << std::endl;
-        }*/
 
         // Copy the denoised result back into the film's color buffer.
         std::memcpy(film->colorBuffer, outputBuffer, width * height * 3 * sizeof(float));
 		cout << "Denoised image saved to colorBuffer" << endl;
-        // Clean up the temporary output buffer.
+        // Clean up 
         delete[] outputBuffer;
     }
 };

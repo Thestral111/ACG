@@ -235,9 +235,9 @@ public:
 	Colour* film;
 	unsigned int width;
 	unsigned int height;
-	float* colorBuffer;       // Raw float buffer for final color (3 floats per pixel)
-	float* albedoBuffer;      // Auxiliary albedo buffer (3 floats per pixel)
-	float* normalBuffer;      // Auxiliary normal buffer (3 floats per pixel)
+	float* colorBuffer;       
+	float* albedoBuffer;     
+	float* normalBuffer;      
 	int SPP;
 	ImageFilter* filter;
 	void splat(const float x, const float y, const Colour& L)
@@ -263,7 +263,7 @@ public:
 		for (int i = 0; i < used; i++) {
 			int idx = indices[i];
 			film[idx] = film[idx] + (L * filterWeights[i] / total);
-			// Update the colorBuffer with the new colour.
+			// Update the colorBuffer with the new colour
 			colorBuffer[idx * 3 + 0] = film[idx].r;
 			colorBuffer[idx * 3 + 1] = film[idx].g;
 			colorBuffer[idx * 3 + 2] = film[idx].b;
@@ -271,7 +271,7 @@ public:
 	}
 	void tonemap(int x, int y, unsigned char& r, unsigned char& g, unsigned char& b, float exposure = 1.0f)
 	{
-		// Return a tonemapped pixel at coordinates x, y
+		// Return a tonemapped pixel at coordinates x, y.
 		Colour pixel = film[y * width + x] * exposure / (float)SPP;
 		r = std::min(powf(std::max(pixel.r, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
 		g = std::min(powf(std::max(pixel.g, 0.0f), 1.0f / 2.2f) * 255, 255.0f);
