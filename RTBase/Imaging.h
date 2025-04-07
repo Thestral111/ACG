@@ -235,6 +235,9 @@ public:
 	Colour* film;
 	unsigned int width;
 	unsigned int height;
+	float* colorBuffer;       // Raw float buffer for final color (3 floats per pixel)
+	float* albedoBuffer;      // Auxiliary albedo buffer (3 floats per pixel)
+	float* normalBuffer;      // Auxiliary normal buffer (3 floats per pixel)
 	int SPP;
 	ImageFilter* filter;
 	void splat(const float x, const float y, const Colour& L)
@@ -258,7 +261,12 @@ public:
 			}
 		}
 		for (int i = 0; i < used; i++) {
-			film[indices[i]] = film[indices[i]] + (L * filterWeights[i] / total);
+			int idx = indices[i];
+			film[idx] = film[idx] + (L * filterWeights[i] / total);
+			// Update the colorBuffer with the new colour.
+			colorBuffer[idx * 3 + 0] = film[idx].r;
+			colorBuffer[idx * 3 + 1] = film[idx].g;
+			colorBuffer[idx * 3 + 2] = film[idx].b;
 		}
 	}
 	void tonemap(int x, int y, unsigned char& r, unsigned char& g, unsigned char& b, float exposure = 1.0f)
@@ -275,12 +283,18 @@ public:
 		width = _width;
 		height = _height;
 		film = new Colour[width * height];
+		colorBuffer = new float[width * height * 3];
+		albedoBuffer = new float[width * height * 3];
+		normalBuffer = new float[width * height * 3];
 		clear();
 		filter = _filter;
 	}
 	void clear()
 	{
 		memset(film, 0, width * height * sizeof(Colour));
+		memset(colorBuffer, 0, width * height * 3 * sizeof(float));
+		memset(albedoBuffer, 0, width * height * 3 * sizeof(float));
+		memset(normalBuffer, 0, width * height * 3 * sizeof(float));
 		SPP = 0;
 	}
 	void incrementSPP()

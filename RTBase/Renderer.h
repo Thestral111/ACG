@@ -10,6 +10,7 @@
 #include "GamesEngineeringBase.h"
 #include <thread>
 #include <functional>
+#include "Denoiser.h"
 
 #define MAX_DEPTH 5
 class RayTracer
@@ -603,6 +604,8 @@ public:
 			worker.join();
 		}
 
+		//Denoiser::apply(film);
+
 	}
 
 	//void renderLT()
@@ -692,6 +695,137 @@ public:
 		for (auto& worker : workers) {
 			worker.join();
 		}
+		Denoiser::apply(film);
+	}
+
+	int renderMode = 1;
+	int PATH_TRACING = 1;
+	int INSTANT_RADIOSITY = 2;
+
+	void render1() {
+		film->incrementSPP();
+
+		// If using instant radiosity, precompute VPLs once per frame.
+		if (renderMode == INSTANT_RADIOSITY) {
+			precomputeVPLs(samplers, 100); // e.g., 100 VPLs; adjust as needed.
+		}
+
+		int numTilesX = (film->width + TILE_SIZE - 1) / TILE_SIZE;
+		int numTilesY = (film->height + TILE_SIZE - 1) / TILE_SIZE;
+		int totalTiles = numTilesX * numTilesY;
+		std::atomic<int> nextTile(0);
+		std::vector<std::thread> workers;
+		int numThreads = numProcs;
+		workers.reserve(numThreads);
+
+		// Parameters for adaptive sampling per pixel.
+		const int initialSamples = 4;       // Initial fixed samples per pixel.
+		const int maxSPP = 32;              // maximum samples per pixel allowed
+		const float varianceThreshold = 0.01f; // Variance threshold to trigger extra sampling.
+
+		auto workerFunc = [=, &nextTile](int id) {
+			while (true) {
+				int tileIndex = nextTile.fetch_add(1, std::memory_order_relaxed);
+				if (tileIndex >= totalTiles)
+					break;
+				int tileX = tileIndex % numTilesX;
+				int tileY = tileIndex / numTilesX;
+				int startX = tileX * TILE_SIZE;
+				int startY = tileY * TILE_SIZE;
+				int endX = min(startX + TILE_SIZE, film->width);
+				int endY = min(startY + TILE_SIZE, film->height);
+
+				// Allocate per-tile buffers for accumulating samples.
+				int tileWidth = endX - startX;
+				int tileHeight = endY - startY;
+				std::vector<Colour> pixelSum(tileWidth * tileHeight, Colour(0.0f, 0.0f, 0.0f));
+				std::vector<Colour> pixelSumSq(tileWidth * tileHeight, Colour(0.0f, 0.0f, 0.0f));
+				std::vector<int> pixelSamples(tileWidth * tileHeight, 0);
+
+				// --- Initial Pass: take a fixed number of samples per pixel ---
+				for (int ty = 0; ty < tileHeight; ty++) {
+					for (int tx = 0; tx < tileWidth; tx++) {
+						int idx = ty * tileWidth + tx;
+						for (int s = 0; s < initialSamples; s++) {
+							float px = (startX + tx) + 0.5f;
+							float py = (startY + ty) + 0.5f;
+							Ray ray = scene->camera.generateRay(px, py);
+							Colour sampleColor;
+							// Choose the rendering mode:
+							if (renderMode == PATH_TRACING) {
+								Colour throughput(1.0f, 1.0f, 1.0f);
+								sampleColor = pathTrace(ray, throughput, 0, samplers);
+							}
+							else if (renderMode == INSTANT_RADIOSITY) {
+								sampleColor = evaluateInstantRadiosityPixel(ray, precomputedVPLs);
+							}
+							pixelSum[idx] = pixelSum[idx] + sampleColor;
+							pixelSumSq[idx] = pixelSumSq[idx] + (sampleColor * sampleColor);
+							pixelSamples[idx]++;
+						}
+					}
+				}
+				// --- Compute Tile-Level Variance ---
+				float totalVar = 0.0f;
+				int numPixels = tileWidth * tileHeight;
+				for (int i = 0; i < numPixels; i++) {
+					Colour avg = pixelSum[i] / float(pixelSamples[i]);
+					Colour varColor = (pixelSumSq[i] / float(pixelSamples[i])) - (avg * avg);
+					totalVar += varColor.Lum();
+				}
+				float tileAvgVar = totalVar / float(numPixels);
+
+				// --- Extra Sampling if Variance is High ---
+				if (tileAvgVar >= varianceThreshold) {
+					for (int ty = 0; ty < tileHeight; ty++) {
+						for (int tx = 0; tx < tileWidth; tx++) {
+							int idx = ty * tileWidth + tx;
+							while (pixelSamples[idx] < maxSPP) {
+								float px = (startX + tx) + 0.5f;
+								float py = (startY + ty) + 0.5f;
+								Ray ray = scene->camera.generateRay(px, py);
+								Colour sampleColor;
+								if (renderMode == PATH_TRACING) {
+									Colour throughput(1.0f, 1.0f, 1.0f);
+									sampleColor = pathTrace(ray, throughput, 0, samplers);
+								}
+								else if (renderMode == INSTANT_RADIOSITY) {
+									sampleColor = evaluateInstantRadiosityPixel(ray, precomputedVPLs);
+								}
+								pixelSum[idx] = pixelSum[idx] + sampleColor;
+								pixelSumSq[idx] = pixelSumSq[idx] + (sampleColor * sampleColor);
+								pixelSamples[idx]++;
+							}
+						}
+					}
+				}
+
+				// --- Write Final Colours ---
+				for (int ty = 0; ty < tileHeight; ty++) {
+					for (int tx = 0; tx < tileWidth; tx++) {
+						int idx = ty * tileWidth + tx;
+						Colour finalColor = pixelSum[idx] / float(pixelSamples[idx]);
+						float px = (startX + tx) + 0.5f;
+						float py = (startY + ty) + 0.5f;
+						film->splat(px, py, finalColor);
+						unsigned char r8 = static_cast<unsigned char>(finalColor.r * 255);
+						unsigned char g8 = static_cast<unsigned char>(finalColor.g * 255);
+						unsigned char b8 = static_cast<unsigned char>(finalColor.b * 255);
+						film->tonemap(startX + tx, startY + ty, r8, g8, b8);
+						canvas->draw(startX + tx, startY + ty, r8, g8, b8);
+					}
+				}
+
+			}
+			};
+
+		for (int i = 0; i < numThreads; i++) {
+			workers.emplace_back(workerFunc, i);
+		}
+		for (auto& worker : workers) {
+			worker.join();
+		}
+		Denoiser::apply(film);
 	}
 
 	int getSPP()

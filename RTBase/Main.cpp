@@ -42,10 +42,10 @@ int main(int argc, char *argv[])
 	
 	// Initialize default parameters
 	//std::string sceneName = "cornell-box";
-	std::string sceneName = "MoreScenes/living-room";
+	//std::string sceneName = "MoreScenes/living-room";
 	//std::string sceneName = "MoreScenes/kitchen";
 	//std::string sceneName = "MoreScenes/bathroom";
-	//std::string sceneName = "MoreScenes/dining-room";
+	std::string sceneName = "MoreScenes/dining-room";
 	//std::string sceneName = "MoreScenes/coffee";
 	//std::string sceneName = "MoreScenes/car2";
 	//std::string sceneName = "Terrain";
@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
 		}
 		// Time how long a render call takes
 		timer.reset();
-		rt.render();
+		rt.render1();
 		float t = timer.dt();
 		// Write
 		std::cout << t << std::endl;
